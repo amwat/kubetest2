@@ -29,7 +29,9 @@ func (bo *BuildOptions) implementationFromStrategy() error {
 		bo.Builder = bazel
 		bo.Stager = bazel
 	case "make":
-		bo.Builder = &build.MakeBuilder{}
+		bo.Builder = &build.MakeBuilder{
+			RepoRoot: bo.RepoRoot,
+		}
 		bo.Stager = &build.ReleasePushBuild{
 			Location: bo.StageLocation,
 		}

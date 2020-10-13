@@ -2,7 +2,6 @@ package build
 
 import (
 	"fmt"
-	"go/build"
 	"os"
 	"path/filepath"
 
@@ -10,12 +9,14 @@ import (
 	"sigs.k8s.io/kubetest2/pkg/exec"
 )
 
-type MakeBuilder struct{}
+type MakeBuilder struct {
+	RepoRoot string
+}
 
 var _ Builder = &MakeBuilder{}
 
 const (
-	target = "bazel-release"
+	target = "quick-release"
 )
 
 var (
@@ -30,51 +31,27 @@ var (
 
 // Build builds kubernetes with the bazel-release make target
 func (m *MakeBuilder) Build() (string, error) {
-	// TODO(RonWeber): This needs options
-	src, err := K8sDir("kubernetes")
-	if err != nil {
-		return "", err
-	}
-	version, err := sourceVersion(src)
+	version, err := sourceVersion(m.RepoRoot)
 	if err != nil {
 		return "", fmt.Errorf("failed to get version: %v", err)
 	}
-	cmd := exec.Command("make", "-C", src, target)
+	cmd := exec.Command("make", "-C", m.RepoRoot, target)
 	exec.InheritOutput(cmd)
 	if err = cmd.Run(); err != nil {
 		return "", err
 	}
-	return version, extractBuiltTars()
+	return version, extractBuiltTars(m.RepoRoot)
 }
 
-// K8sDir returns $GOPATH/src/k8s.io/...
-func K8sDir(topdir string, parts ...string) (string, error) {
-	gopathList := filepath.SplitList(build.Default.GOPATH)
-	for _, gopath := range gopathList {
-		kubedir := filepath.Join(gopath, "src", "k8s.io", topdir)
-		if _, err := os.Stat(kubedir); !os.IsNotExist(err) {
-			p := []string{kubedir}
-			p = append(p, parts...)
-			return filepath.Join(p...), nil
-		}
-	}
-	return "", fmt.Errorf("could not find directory src/k8s.io/%s in GOPATH", topdir)
-}
-
-// TODO(RonWeber): This whole untarring and cd-ing logic is out of
-// scope for Build().  It needs a better home.
-func extractBuiltTars() error {
-	allBuilds, err := K8sDir("kubernetes", "_output", "gcs-stage")
-	if err != nil {
-		return err
-	}
+func extractBuiltTars(kuberoot string) error {
+	allBuilds := filepath.Join(kuberoot, "_output", "gcs-stage")
 
 	shouldExtract := make(map[string]bool)
 	for _, name := range tarballsToExtract {
 		shouldExtract[name] = true
 	}
 
-	err = filepath.Walk(allBuilds, func(path string, info os.FileInfo, err error) error { //Untar anything with the filename we want.
+	err := filepath.Walk(allBuilds, func(path string, info os.FileInfo, err error) error { //Untar anything with the filename we want.
 		if err != nil {
 			return err
 		}
